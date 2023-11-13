@@ -1,27 +1,43 @@
-import 'package:flutter/material.dart';
+import 'dart:developer';
+//import 'package:geolocator/geolocator.dart';
+import 'package:weather_app2/components/custom_icon_button.dart';
 import 'package:weather_app2/constants/api_const.dart';
+import 'package:weather_app2/constants/app_colors.dart';
 import 'package:weather_app2/constants/app_text.dart';
 import 'package:weather_app2/constants/app_text_style.dart';
 import 'package:weather_app2/models/weather.dart';
+import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 
-import 'components/custom_icon_button.dart';
-import 'constants/app_colors.dart';
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.title});
 
   final String title;
-
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  @override
-  Widget build(BuildContext context) {
-    Future<Weather?> festData() async {
+class _HomePageState extends State<HomePage> {  
+    Future<void> weatherLocatio() async {
+      log('------------');
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.always && permission == LocationPermission.whileInUse) {
+          await fetchData();
+        }
+      } else {
+        Position position = await Geolocator.getCurrentPosition();
+        await fetchData(ApiConst.latLongAddress(position.latitude, position.longitude));
+        // print(position.latitude);
+        // print(position.longitude);
+      }
+    }
+
+    Future<Weather?>? fetchData([String? url]) async {
+     // await Future.delayed(Duration(seconds: 3));
       final dio = Dio();
-      final Response = await dio.get(ApiConst.address);
+      final Response = await dio.get( url ?? ApiConst.address);
       if (Response.statusCode == 200) {
         final Weather weather = Weather(
           id: Response.data['weather'][0]['id'],
@@ -35,78 +51,112 @@ class _HomePageState extends State<HomePage> {
         return weather;
       }
     }
-
-    @override
-    void initState() {
-      super.initState();
-    }
-
+@override
+Widget build(BuildContext context) {    
+  // void initState() {
+  //     super.initState();
+  //   }
+log('max w ${MediaQuery.of(context).size.width}');
+    log('max h ${MediaQuery.of(context).size.height}');
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.white,
-        title: Text(
+        title: const Text(
           AppText.appBarTitle,
-          style: AppTextStyle.apBar,
+          style: AppTextStyle.appBar,
         ),
         centerTitle: true,
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage('/weather.jpg'),
-            fit: BoxFit.cover,
-          ),
-        ),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                CustomIconButton(
-                  icon: Icons.near_me,
-                ),
-                CustomIconButton(
-                  icon: Icons.location_city,
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                Text(
-                  '8',
-                  style: AppTextStyle.temp,
-                ),
-                Image.network(
-                  ApiConst.getIcon('02d', 4),
-                ),
-              ],
-            ),
-            Center(
-              child: FutureBuilder(
-                  future: festData(),
-                  builder: (ctx, sn) {
-                    if (sn.hasData) {
-                      return Column(
+      body: FutureBuilder<Weather?>(
+          future: fetchData(),
+          builder: (context, joop) {
+            if (joop.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            } else if (joop.connectionState == ConnectionState.none) {
+              return const Text('Internt jok');
+            } else if (joop.connectionState == ConnectionState.done) {
+              if (joop.hasError) {
+                return Text('${joop.error}');
+              } else if (joop.hasData) {
+                final Weather = joop.data;
+                return Container(
+                  decoration: const BoxDecoration(
+                    image: DecorationImage(
+                      image: AssetImage('/weather.jpg'),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(sn.data!.id.toString()),
-                          Text(sn.data!.description),
-                          Text(sn.data!.main),
-                          Text(sn.data!.icon),
-                          Text(sn.data!.city),
-                          Text(sn.data!.country),
-                          Text(sn.data!.temp.toString()),
+                          CustomIconButton(
+                            icon: Icons.near_me,
+                            onPressed: () async {await weatherLocatio();},
+                          ),
+                          CustomIconButton(
+                            icon: Icons.location_city,
+                            onPressed: () {},
+                          ),
                         ],
-                      );
-                    } else if (sn.hasError) {
-                      return Text(sn.error.toString());
-                    } else {
-                      return CircularProgressIndicator();
-                    }
-                  }),
-            ),
-          ],
-        ),
-      ),
+                      ),
+                      Row(
+                        children: [
+                          Text('${(Weather!.temp - 273.15).round()}',
+                              style: AppTextStyle.temp),
+                          Image.network(
+                            ApiConst.getIcon('${Weather.icon}', 4),
+                            height: 200,
+                            fit: BoxFit.fitHeight,
+                          ),
+                        ],
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${Weather.description}'.replaceAll(' ', '\n'),
+                            textAlign: TextAlign.right,
+                            style: AppTextStyle.body,
+                          ),
+                          const SizedBox(
+                            width: 20,
+                          ),
+                          const Column(
+                            children: [
+                              Icon(
+                                Icons.web_asset,
+                                size: 50,
+                                color: Colors.white,
+                              ),
+                              Icon(
+                                Icons.access_alarm,
+                                size: 50,
+                                color: Colors.white,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      Expanded(
+                        child: FittedBox(
+                          child: Text(
+                            Weather.city,
+                            style: AppTextStyle.body,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              } else {
+                return const Text('Belgisiz kata');
+              }
+            } else {
+              return const Text('Belgisiz kata2');
+            }
+          }),
     );
   }
 }
